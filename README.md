@@ -1,4 +1,4 @@
-# Red Dust: Specimen — v0.0.1
+# Red Dust: Specimen — v0.0.1.2
 
 Browser-first first/third-person prototype built with HTML/CSS/JavaScript + Three.js.
 
@@ -48,8 +48,13 @@ Then open `http://localhost:8080`.
 See `CREDITS.md` for supplied asset licenses and sources.
 
 
-## v0.0.1.1 hotfix
-- Corrected first-person camera heading (was 180° reversed).
-- Raised exposure/global fill and reduced fog density for readable mobile interiors.
-- Added inexpensive wing work lights and a subtle specimen-local fill light.
-- Disabled iOS text selection/callout during gameplay.
+
+## v0.0.1.2 — visibility + locomotion hotfix
+- Removed the specimen-local/head light entirely. Illumination now comes from the base.
+- Added visible ceiling/work-light fixtures throughout the hub, corridors, and wings.
+- Corrected the practical-light intensity for modern Three.js physically based lighting and raised ambient/exposure so iPhone Safari does not crush the facility into black.
+- Reduced fog density while preserving dark pockets and red emergency accents.
+- Disabled iOS double-tap/pinch zoom and text-selection callouts during gameplay.
+- Stopped looping the monster's only built-in `Prowl` clip as locomotion; it is held neutral for now because the source GLB contains no true walk/run cycle.
+- The monster now rotates toward actual travel direction in third person instead of sliding sideways; first person keeps the body aligned with view heading.
+- First-person sight remains aligned with forward movement.

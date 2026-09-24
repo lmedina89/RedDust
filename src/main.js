@@ -18,9 +18,10 @@ const fatal = document.querySelector('#fatal');
 const fatalText = document.querySelector('#fatalText');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0b1015);
-// Keep the horror mood without crushing the interior into black on mobile displays.
-scene.fog = new THREE.FogExp2(0x10161c, 0.018);
+scene.background = new THREE.Color(0x11171d);
+// Mobile Safari crushed the original blacks badly. Keep distance haze, but make the
+// playable interior readable first; darkness should come from pockets, not the whole frame.
+scene.fog = new THREE.FogExp2(0x182128, 0.0065);
 
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 160);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -30,7 +31,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.38;
+renderer.toneMappingExposure = 2.25;
 gameEl.append(renderer.domElement);
 
 const clock = new THREE.Clock();
@@ -74,24 +75,24 @@ const player = {
 };
 player.root.position.set(0, 0, 13.5);
 scene.add(player.root);
+player.moveYaw = Math.PI;
 
 const mat = {
-  floor: new THREE.MeshStandardMaterial({ color: 0x171c21, roughness: 0.78, metalness: 0.48 }),
-  wall: new THREE.MeshStandardMaterial({ color: 0x242a2e, roughness: 0.7, metalness: 0.58 }),
-  dark: new THREE.MeshStandardMaterial({ color: 0x0c1013, roughness: 0.8, metalness: 0.5 }),
-  red: new THREE.MeshStandardMaterial({ color: 0x541b18, emissive: 0x2a0503, emissiveIntensity: 1.0, roughness: 0.55, metalness: 0.45 }),
-  glass: new THREE.MeshStandardMaterial({ color: 0x17262b, emissive: 0x092027, emissiveIntensity: 0.5, roughness: 0.14, metalness: 0.2, transparent: true, opacity: 0.48 }),
+  floor: new THREE.MeshStandardMaterial({ color: 0x26313a, roughness: 0.76, metalness: 0.42 }),
+  wall: new THREE.MeshStandardMaterial({ color: 0x374149, roughness: 0.68, metalness: 0.5 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x1a2228, roughness: 0.78, metalness: 0.42 }),
+  red: new THREE.MeshStandardMaterial({ color: 0x7b2d23, emissive: 0x5a0e09, emissiveIntensity: 1.8, roughness: 0.5, metalness: 0.38 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x27414a, emissive: 0x123745, emissiveIntensity: 1.1, roughness: 0.1, metalness: 0.16, transparent: true, opacity: 0.54 }),
 };
 
-let specimenLight = null;
-
 function addAmbientLighting() {
-  // Cheap global fill is intentional: iPhone/Safari was rendering the original
-  // horror lighting almost completely black. Local red lights still preserve mood.
-  scene.add(new THREE.AmbientLight(0x8fa8b8, 0.72));
-  scene.add(new THREE.HemisphereLight(0xa8c4d1, 0x2c1712, 1.05));
+  // v0.0.1.2: visibility comes from the facility, never from the specimen.
+  // Three.js uses physically-based light units, so point lights need meaningful
+  // intensities at meter-ish scene scale; the old values (~2) were effectively tiny.
+  scene.add(new THREE.AmbientLight(0xb8c8d0, 1.55));
+  scene.add(new THREE.HemisphereLight(0xd6e8ef, 0x4a3027, 1.65));
 
-  const key = new THREE.DirectionalLight(0xd9eef4, 1.65);
+  const key = new THREE.DirectionalLight(0xe8f5ff, 2.35);
   key.position.set(8, 13, 6);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
@@ -99,25 +100,44 @@ function addAmbientLighting() {
   key.shadow.camera.top = 24; key.shadow.camera.bottom = -24;
   scene.add(key);
 
-  // Readable work lights in each wing. These do not cast shadows, keeping the
-  // extra lighting inexpensive for the browser prototype.
-  for (const [x,z] of [[0,0],[-12,0],[12,0],[0,-12.5],[0,12.5]]) {
-    const work = new THREE.PointLight(0xb9dce6, 2.15, 11, 1.55);
-    work.position.set(x, 2.55, z);
+  // Visible ceiling/practical fixtures throughout the compact base. Most fixtures
+  // are emissive-only; a smaller set carries real point lights to keep iPhone cost sane.
+  const fixtureMat = new THREE.MeshBasicMaterial({ color: 0xcff7ff });
+  const fixturePositions = [
+    [0,2.82,0],[-3.8,2.72,0],[3.8,2.72,0],
+    [0,2.72,6.8],[0,2.72,12.1],[0,2.72,16.2],
+    [0,2.72,-6.8],[0,2.72,-12.1],[0,2.72,-16.2],
+    [-6.8,2.72,0],[-12.1,2.72,0],[6.8,2.72,0],[12.1,2.72,0]
+  ];
+  for (const [x,y,z] of fixturePositions) {
+    const fixture = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.08, 0.24), fixtureMat);
+    fixture.position.set(x,y,z);
+    fixture.castShadow = false;
+    fixture.receiveShadow = false;
+    scene.add(fixture);
+  }
+
+  // One real work light per major room/wing plus the hub. These are deliberately
+  // shadowless and moderately ranged: readable, believable, and cheaper than giving
+  // every glowing fixture its own dynamic light.
+  for (const [x,z,intensity,range] of [
+    [0,0,55,12], [0,12.5,48,11], [0,-12.5,48,11],
+    [-12.5,0,48,11], [12.5,0,48,11], [0,6.8,34,8], [0,-6.8,34,8]
+  ]) {
+    const work = new THREE.PointLight(0xdaf6ff, intensity, range, 1.7);
+    work.position.set(x,2.48,z);
+    work.castShadow = false;
     scene.add(work);
   }
 
-  // Red emergency accents remain visible without being the only illumination.
+  // Restrained red emergency accents. They color the space without being the only
+  // illumination, which was the main readability failure in the earlier build.
   for (const [x,z] of [[-5.2,0],[5.2,0],[0,-7],[0,7]]) {
-    const p = new THREE.PointLight(0xff493d, 1.75, 8, 2.0);
-    p.position.set(x, 2.45, z);
+    const p = new THREE.PointLight(0xff5b45, 18, 6.5, 2.0);
+    p.position.set(x,2.2,z);
+    p.castShadow = false;
     scene.add(p);
   }
-
-  // A subtle specimen/head light keeps nearby geometry readable in both FP/TP.
-  specimenLight = new THREE.PointLight(0xcdefff, 1.6, 6.5, 1.7);
-  specimenLight.position.set(0, 1.0, 0);
-  player.root.add(specimenLight);
 }
 
 function box(size, pos, material, collidable = false, name = '') {
@@ -252,7 +272,12 @@ async function loadMonster() {
   player.mixer = new THREE.AnimationMixer(gltf.scene);
   world.mixers.push(player.mixer);
   const clip = gltf.animations.find(a=>a.name.toLowerCase().includes('prowl')) || gltf.animations[0];
-  if (clip) player.mixer.clipAction(clip).play();
+  if (clip) {
+    const action = player.mixer.clipAction(clip);
+    action.play();
+    action.paused = true;
+    action.time = 0;
+  }
 }
 
 const npcDefs = [
@@ -301,8 +326,10 @@ function updatePlayer(dt) {
   const right = (input.right?1:0) - (input.left?1:0) + input.r;
   const mag = Math.hypot(forward,right);
   if (mag > .02) {
-    const f = Math.min(1,mag), a = Math.atan2(right, forward) + input.yaw;
-    const dir = new THREE.Vector3(Math.sin(a),0,Math.cos(a));
+    const f = Math.min(1,mag);
+    const moveYaw = Math.atan2(right, forward) + input.yaw;
+    player.moveYaw = moveYaw;
+    const dir = new THREE.Vector3(Math.sin(moveYaw),0,Math.cos(moveYaw));
     const speed = input.crouch ? player.crouchSpeed : input.sprint ? player.sprintSpeed : player.speed;
     const step = dir.multiplyScalar(speed*dt*f);
     const cur = player.root.position;
@@ -312,8 +339,9 @@ function updatePlayer(dt) {
       const xOnly = cur.clone().add(new THREE.Vector3(step.x,0,0)); if(!isBlocked(xOnly)) cur.copy(xOnly);
       const zOnly = cur.clone().add(new THREE.Vector3(0,0,step.z)); if(!isBlocked(zOnly)) cur.copy(zOnly);
     }
-    player.root.rotation.y = input.yaw + Math.PI;
   }
+  const turnTarget = (world.cameraMode === 'first') ? (input.yaw + Math.PI) : (player.moveYaw + Math.PI);
+  player.root.rotation.y = THREE.MathUtils.lerp(player.root.rotation.y, turnTarget, 1 - Math.exp(-10 * dt));
   player.root.position.x = THREE.MathUtils.clamp(player.root.position.x,-20,20);
   player.root.position.z = THREE.MathUtils.clamp(player.root.position.z,-20,20);
 }
@@ -439,6 +467,21 @@ function setupMobileInput(){
 function onResize(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,IS_TOUCH?1.45:1.8));}
 addEventListener('resize',onResize);
 
+
+function suppressIOSZoom() {
+  let lastTouchEnd = 0;
+  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gestureend', e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchend', e => {
+    const now = performance.now();
+    if (now - lastTouchEnd < 350) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
+}
+
+
 async function init(){
   try{
     addAmbientLighting(); buildBase();
@@ -451,6 +494,7 @@ async function init(){
       await jobs[i][1]();
     }
     loadBar.style.width='100%'; loadLine.textContent='Containment systems online.'; startBtn.disabled=false;
+    suppressIOSZoom();
     setupDesktopInput(); setupMobileInput();
   }catch(err){ console.error(err); fatalText.textContent=String(err?.message||err); fatal.classList.add('show'); }
 }
