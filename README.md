@@ -46,3 +46,10 @@ Then open `http://localhost:8080`.
 - This is a gameplay prototype, not the final Godot production build.
 
 See `CREDITS.md` for supplied asset licenses and sources.
+
+
+## v0.0.1.1 hotfix
+- Corrected first-person camera heading (was 180° reversed).
+- Raised exposure/global fill and reduced fog density for readable mobile interiors.
+- Added inexpensive wing work lights and a subtle specimen-local fill light.
+- Disabled iOS text selection/callout during gameplay.

@@ -18,8 +18,9 @@ const fatal = document.querySelector('#fatal');
 const fatalText = document.querySelector('#fatalText');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x07090b);
-scene.fog = new THREE.FogExp2(0x090b0e, 0.028);
+scene.background = new THREE.Color(0x0b1015);
+// Keep the horror mood without crushing the interior into black on mobile displays.
+scene.fog = new THREE.FogExp2(0x10161c, 0.018);
 
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 160);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -29,7 +30,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.95;
+renderer.toneMappingExposure = 1.38;
 gameEl.append(renderer.domElement);
 
 const clock = new THREE.Clock();
@@ -82,20 +83,41 @@ const mat = {
   glass: new THREE.MeshStandardMaterial({ color: 0x17262b, emissive: 0x092027, emissiveIntensity: 0.5, roughness: 0.14, metalness: 0.2, transparent: true, opacity: 0.48 }),
 };
 
+let specimenLight = null;
+
 function addAmbientLighting() {
-  scene.add(new THREE.HemisphereLight(0x6d8795, 0x150c0a, 0.55));
-  const key = new THREE.DirectionalLight(0xb9d7de, 1.0);
+  // Cheap global fill is intentional: iPhone/Safari was rendering the original
+  // horror lighting almost completely black. Local red lights still preserve mood.
+  scene.add(new THREE.AmbientLight(0x8fa8b8, 0.72));
+  scene.add(new THREE.HemisphereLight(0xa8c4d1, 0x2c1712, 1.05));
+
+  const key = new THREE.DirectionalLight(0xd9eef4, 1.65);
   key.position.set(8, 13, 6);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.left = -24; key.shadow.camera.right = 24;
   key.shadow.camera.top = 24; key.shadow.camera.bottom = -24;
   scene.add(key);
-  for (const [x,z] of [[0,0],[-12,0],[12,0],[0,-13],[0,13]]) {
-    const p = new THREE.PointLight(0xff473b, 1.15, 12, 2.0);
-    p.position.set(x, 2.65, z);
+
+  // Readable work lights in each wing. These do not cast shadows, keeping the
+  // extra lighting inexpensive for the browser prototype.
+  for (const [x,z] of [[0,0],[-12,0],[12,0],[0,-12.5],[0,12.5]]) {
+    const work = new THREE.PointLight(0xb9dce6, 2.15, 11, 1.55);
+    work.position.set(x, 2.55, z);
+    scene.add(work);
+  }
+
+  // Red emergency accents remain visible without being the only illumination.
+  for (const [x,z] of [[-5.2,0],[5.2,0],[0,-7],[0,7]]) {
+    const p = new THREE.PointLight(0xff493d, 1.75, 8, 2.0);
+    p.position.set(x, 2.45, z);
     scene.add(p);
   }
+
+  // A subtle specimen/head light keeps nearby geometry readable in both FP/TP.
+  specimenLight = new THREE.PointLight(0xcdefff, 1.6, 6.5, 1.7);
+  specimenLight.position.set(0, 1.0, 0);
+  player.root.add(specimenLight);
 }
 
 function box(size, pos, material, collidable = false, name = '') {
@@ -369,7 +391,10 @@ function updateCamera(dt) {
   if(world.cameraMode==='first'){
     const eye=new THREE.Vector3(p.x,p.y+player.eye+crouchOffset,p.z);
     camera.position.lerp(eye,1-Math.exp(-18*dt));
-    camera.rotation.order='YXZ'; camera.rotation.y=input.yaw; camera.rotation.x=input.pitch; camera.rotation.z=0;
+    camera.rotation.order='YXZ';
+    // Three.js cameras look down local -Z, while our movement heading uses +Z.
+    // Add PI so first-person sight and forward movement point the same way.
+    camera.rotation.y=input.yaw + Math.PI; camera.rotation.x=input.pitch; camera.rotation.z=0;
     if(player.model) player.model.visible=false;
   } else {
     if(player.model) player.model.visible=true;
